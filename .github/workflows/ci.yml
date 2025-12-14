@@ -1,0 +1,209 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Run linter
+        run: npm run lint
+      
+      - name: Type check
+        run: npm run type-check
+
+  security:
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Security audit
+        run: |
+          echo "🔒 Running security audit..."
+          npm audit --audit-level=moderate || true
+          
+          # Check for critical and high vulnerabilities
+          AUDIT_RESULT=$(npm audit --json --audit-level=moderate 2>/dev/null || echo '{}')
+          CRITICAL=$(echo "$AUDIT_RESULT" | node -e "const data = require('fs').readFileSync(0, 'utf-8'); try { const audit = JSON.parse(data); console.log(audit.metadata?.vulnerabilities?.critical || 0); } catch(e) { console.log(0); }")
+          HIGH=$(echo "$AUDIT_RESULT" | node -e "const data = require('fs').readFileSync(0, 'utf-8'); try { const audit = JSON.parse(data); console.log(audit.metadata?.vulnerabilities?.high || 0); } catch(e) { console.log(0); }")
+          MODERATE=$(echo "$AUDIT_RESULT" | node -e "const data = require('fs').readFileSync(0, 'utf-8'); try { const audit = JSON.parse(data); console.log(audit.metadata?.vulnerabilities?.moderate || 0); } catch(e) { console.log(0); }")
+          
+          echo "📊 Vulnerability Summary:"
+          echo "  Critical: $CRITICAL"
+          echo "  High: $HIGH"
+          echo "  Moderate: $MODERATE"
+          
+          # Fail on critical or high vulnerabilities
+          if [ "$CRITICAL" -gt 0 ] || [ "$HIGH" -gt 0 ]; then
+            echo "❌ Security audit failed: Critical or High vulnerabilities found!"
+            echo "Please run 'npm audit fix' or update vulnerable dependencies before publishing."
+            exit 1
+          fi
+          
+          if [ "$MODERATE" -gt 0 ]; then
+            echo "⚠️  Warning: Moderate vulnerabilities found. Consider updating dependencies."
+          else
+            echo "✅ No critical or high vulnerabilities found!"
+          fi
+
+  test:
+    runs-on: ubuntu-latest
+    needs: security
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Build package
+        run: npm run build
+      
+      - name: Run tests with 100% coverage requirement
+        run: npm run test:ci
+        env:
+          CI: true
+      
+      - name: Verify coverage threshold
+        run: |
+          if [ ! -f "coverage/coverage-summary.json" ]; then
+            echo "❌ Coverage report not found"
+            exit 1
+          fi
+          
+          COVERAGE=$(node -e "const cov = require('./coverage/coverage-summary.json'); console.log(cov.total.statements.pct, cov.total.branches.pct, cov.total.functions.pct, cov.total.lines.pct);")
+          
+          echo "📊 Coverage Results:"
+          echo "$COVERAGE"
+          
+          # Check if all coverage metrics are 100%
+          if ! node -e "const cov = require('./coverage/coverage-summary.json'); const all = [cov.total.statements.pct, cov.total.branches.pct, cov.total.functions.pct, cov.total.lines.pct]; if (all.some(v => v !== 100)) { process.exit(1); }"; then
+            echo "❌ Coverage is not 100%. All metrics must be at 100%."
+            echo "Current coverage:"
+            cat coverage/coverage-summary.json | grep -A 4 '"total"'
+            exit 1
+          fi
+          
+          echo "✅ 100% coverage achieved!"
+      
+      - name: Upload coverage reports
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./coverage/lcov.info
+          fail_ci_if_error: false
+
+  auto-release:
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Get current version
+        id: version
+        run: |
+          CURRENT_VERSION=$(node -p "require('./package.json').version")
+          echo "current_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+          echo "📦 Current version: $CURRENT_VERSION"
+      
+      - name: Check if release already exists
+        id: check-release
+        run: |
+          VERSION="${{ steps.version.outputs.current_version }}"
+          TAG="v$VERSION"
+          
+          # Check if tag already exists
+          git fetch --tags || true
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "Tag $TAG already exists, skipping release"
+            echo "should_release=false" >> $GITHUB_OUTPUT
+          else
+            echo "Tag $TAG does not exist, will create release"
+            echo "should_release=true" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Create GitHub Release
+        if: steps.check-release.outputs.should_release == 'true'
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ steps.version.outputs.current_version }}
+          name: Release v${{ steps.version.outputs.current_version }}
+          body: |
+            ## Release v${{ steps.version.outputs.current_version }}
+            
+            ### Auto-generated Release
+            
+            This release was automatically created after all CI checks passed on push to main.
+            
+            ### Installation
+            ```bash
+            npm install @keyclaim/sdk-typescript@${{ steps.version.outputs.current_version }}
+            ```
+            
+            ### Package
+            📦 https://www.npmjs.com/package/@keyclaim/sdk-typescript
+            
+            ### Checks Passed
+            - ✅ Linting
+            - ✅ Security audit
+            - ✅ Tests with 100% coverage
+            - ✅ Build successful
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+

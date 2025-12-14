@@ -1,0 +1,11 @@
+src/
+test/
+tsconfig.json
+*.ts
+!*.d.ts
+.gitignore
+README.md
+node_modules/
+.env
+.env.example
+

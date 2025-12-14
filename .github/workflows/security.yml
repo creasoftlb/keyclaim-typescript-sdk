@@ -1,0 +1,128 @@
+name: Security Scan
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  schedule:
+    # Run weekly on Monday at 00:00 UTC
+    - cron: '0 0 * * 1'
+  workflow_dispatch:
+
+jobs:
+  security-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Run npm audit
+        id: npm-audit
+        run: |
+          echo "🔒 Running npm security audit..."
+          npm audit --audit-level=moderate --json > audit-results.json || true
+          
+          # Parse audit results
+          CRITICAL=$(node -e "const audit = require('./audit-results.json'); console.log(audit.metadata?.vulnerabilities?.critical || 0);")
+          HIGH=$(node -e "const audit = require('./audit-results.json'); console.log(audit.metadata?.vulnerabilities?.high || 0);")
+          MODERATE=$(node -e "const audit = require('./audit-results.json'); console.log(audit.metadata?.vulnerabilities?.moderate || 0);")
+          LOW=$(node -e "const audit = require('./audit-results.json'); console.log(audit.metadata?.vulnerabilities?.low || 0);")
+          INFO=$(node -e "const audit = require('./audit-results.json'); console.log(audit.metadata?.vulnerabilities?.info || 0);")
+          
+          echo "critical=$CRITICAL" >> $GITHUB_OUTPUT
+          echo "high=$HIGH" >> $GITHUB_OUTPUT
+          echo "moderate=$MODERATE" >> $GITHUB_OUTPUT
+          echo "low=$LOW" >> $GITHUB_OUTPUT
+          echo "info=$INFO" >> $GITHUB_OUTPUT
+          
+          echo "📊 Vulnerability Summary:"
+          echo "  Critical: $CRITICAL"
+          echo "  High: $HIGH"
+          echo "  Moderate: $MODERATE"
+          echo "  Low: $LOW"
+          echo "  Info: $INFO"
+          
+          # Create summary
+          TOTAL=$((CRITICAL + HIGH + MODERATE + LOW + INFO))
+          echo "total=$TOTAL" >> $GITHUB_OUTPUT
+          
+          if [ "$CRITICAL" -gt 0 ] || [ "$HIGH" -gt 0 ]; then
+            echo "❌ Critical or High vulnerabilities found!"
+            echo "has_critical_or_high=true" >> $GITHUB_OUTPUT
+            exit 1
+          else
+            echo "✅ No critical or high vulnerabilities found!"
+            echo "has_critical_or_high=false" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Upload audit results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-audit-results
+          path: audit-results.json
+          retention-days: 30
+      
+      - name: Comment PR with audit results
+        if: github.event_name == 'pull_request' && steps.npm-audit.outputs.has_critical_or_high == 'true'
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const fs = require('fs');
+            const audit = JSON.parse(fs.readFileSync('audit-results.json', 'utf8'));
+            
+            const critical = audit.metadata?.vulnerabilities?.critical || 0;
+            const high = audit.metadata?.vulnerabilities?.high || 0;
+            const moderate = audit.metadata?.vulnerabilities?.moderate || 0;
+            
+            const body = `## 🔒 Security Audit Results
+            
+            ⚠️ **Security vulnerabilities detected!**
+            
+            | Severity | Count |
+            |----------|-------|
+            | 🔴 Critical | ${critical} |
+            | 🟠 High | ${high} |
+            | 🟡 Moderate | ${moderate} |
+            
+            ### Action Required
+            
+            Please fix critical and high vulnerabilities before merging this PR.
+            
+            \`\`\`bash
+            npm audit fix
+            # or
+            npm audit fix --force
+            \`\`\`
+            
+            For more details, check the workflow logs.`;
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body
+            });
+      
+      - name: Check for outdated packages
+        run: |
+          echo "📦 Checking for outdated packages..."
+          npm outdated || true
+      
+      - name: Dependency Review
+        if: github.event_name == 'pull_request'
+        uses: actions/dependency-review-action@v3
+        with:
+          fail-on-severity: moderate
+          deny-licenses: GPL-2.0, GPL-3.0
+
