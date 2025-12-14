@@ -30,6 +30,7 @@ module.exports = {
       },
       rules: {
         '@typescript-eslint/no-explicit-any': 'off', // Allow 'any' in test files
+        '@typescript-eslint/unbound-method': 'off', // Jest mocks use unbound methods
       },
     },
   ],
