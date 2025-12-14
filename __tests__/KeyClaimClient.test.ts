@@ -1,10 +1,25 @@
-import { KeyClaimClient, KeyClaimError, createClient } from '../src/index';
-import axios from 'axios';
+import { KeyClaimClient, KeyClaimError, createClient, ResponseMethod } from '../src/index';
+import axios, { AxiosInstance } from 'axios';
 import * as crypto from 'crypto';
 
 // Mock axios
 jest.mock('axios');
 const mockedAxios = axios as jest.Mocked<typeof axios>;
+
+// Helper type for mock AxiosInstance
+type MockAxiosInstance = Partial<AxiosInstance> & {
+  post: jest.Mock;
+  get?: jest.Mock;
+  put?: jest.Mock;
+  delete?: jest.Mock;
+  patch?: jest.Mock;
+  request?: jest.Mock;
+  interceptors?: {
+    request: { use: jest.Mock; eject: jest.Mock };
+    response: { use: jest.Mock; eject: jest.Mock };
+  };
+  defaults?: Record<string, unknown>;
+};
 
 describe('KeyClaimClient', () => {
   const mockApiKey = 'kc_test123456789012345678901234567890123456789012345678901234567890';
@@ -13,7 +28,7 @@ describe('KeyClaimClient', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    mockedAxios.create.mockReturnValue({
+    const mockInstance: MockAxiosInstance = {
       post: jest.fn(),
       get: jest.fn(),
       put: jest.fn(),
@@ -25,7 +40,8 @@ describe('KeyClaimClient', () => {
         response: { use: jest.fn(), eject: jest.fn() },
       },
       defaults: {},
-    } as any);
+    };
+    mockedAxios.create.mockReturnValue(mockInstance as AxiosInstance);
   });
 
   describe('Constructor', () => {
@@ -87,11 +103,11 @@ describe('KeyClaimClient', () => {
         encrypted: false,
       };
 
-      const mockAxiosInstance = {
+      const mockAxiosInstance: MockAxiosInstance = {
         post: jest.fn().mockResolvedValue({ data: mockResponse }),
       };
 
-      mockedAxios.create.mockReturnValue(mockAxiosInstance as any);
+      mockedAxios.create.mockReturnValue(mockAxiosInstance as AxiosInstance);
 
       const client = new KeyClaimClient({
         apiKey: mockApiKey,
@@ -112,11 +128,11 @@ describe('KeyClaimClient', () => {
         expires_in: 30,
       };
 
-      const mockAxiosInstance = {
+      const mockAxiosInstance: MockAxiosInstance = {
         post: jest.fn().mockResolvedValue({ data: mockResponse }),
       };
 
-      mockedAxios.create.mockReturnValue(mockAxiosInstance as any);
+      mockedAxios.create.mockReturnValue(mockAxiosInstance as AxiosInstance);
 
       const client = new KeyClaimClient({
         apiKey: mockApiKey,
@@ -131,7 +147,7 @@ describe('KeyClaimClient', () => {
     });
 
     it('should handle errors when creating challenge', async () => {
-      const mockAxiosInstance = {
+      const mockAxiosInstance: MockAxiosInstance = {
         post: jest.fn().mockRejectedValue({
           response: {
             status: 401,
@@ -140,7 +156,7 @@ describe('KeyClaimClient', () => {
         }),
       };
 
-      mockedAxios.create.mockReturnValue(mockAxiosInstance as any);
+      mockedAxios.create.mockReturnValue(mockAxiosInstance as AxiosInstance);
 
       const client = new KeyClaimClient({
         apiKey: mockApiKey,
@@ -155,9 +171,10 @@ describe('KeyClaimClient', () => {
     let client: KeyClaimClient;
 
     beforeEach(() => {
-      mockedAxios.create.mockReturnValue({
+      const mockInstance: MockAxiosInstance = {
         post: jest.fn(),
-      } as any);
+      };
+      mockedAxios.create.mockReturnValue(mockInstance as AxiosInstance);
       client = new KeyClaimClient({
         apiKey: mockApiKey,
         secret: mockSecret,
@@ -235,7 +252,7 @@ describe('KeyClaimClient', () => {
       const challenge = 'test-challenge';
 
       expect(() => {
-        client.generateResponse(challenge, 'unknown' as any);
+        client.generateResponse(challenge, 'unknown' as unknown as ResponseMethod);
       }).toThrow(KeyClaimError);
     });
 
@@ -264,11 +281,11 @@ describe('KeyClaimClient', () => {
         },
       };
 
-      const mockAxiosInstance = {
+      const mockAxiosInstance: MockAxiosInstance = {
         post: jest.fn().mockResolvedValue({ data: mockResponse }),
       };
 
-      mockedAxios.create.mockReturnValue(mockAxiosInstance as any);
+      mockedAxios.create.mockReturnValue(mockAxiosInstance as AxiosInstance);
 
       const client = new KeyClaimClient({
         apiKey: mockApiKey,
@@ -293,11 +310,11 @@ describe('KeyClaimClient', () => {
         valid: true,
       };
 
-      const mockAxiosInstance = {
+      const mockAxiosInstance: MockAxiosInstance = {
         post: jest.fn().mockResolvedValue({ data: mockResponse }),
       };
 
-      mockedAxios.create.mockReturnValue(mockAxiosInstance as any);
+      mockedAxios.create.mockReturnValue(mockAxiosInstance as AxiosInstance);
 
       const client = new KeyClaimClient({
         apiKey: mockApiKey,
@@ -318,7 +335,7 @@ describe('KeyClaimClient', () => {
     });
 
     it('should return validation result when API returns invalid response', async () => {
-      const mockAxiosInstance = {
+      const mockAxiosInstance: MockAxiosInstance = {
         post: jest.fn().mockRejectedValue({
           response: {
             status: 400,
@@ -330,7 +347,7 @@ describe('KeyClaimClient', () => {
         }),
       };
 
-      mockedAxios.create.mockReturnValue(mockAxiosInstance as any);
+      mockedAxios.create.mockReturnValue(mockAxiosInstance as AxiosInstance);
 
       const client = new KeyClaimClient({
         apiKey: mockApiKey,
@@ -349,7 +366,7 @@ describe('KeyClaimClient', () => {
     });
 
     it('should return validation result when API returns invalid response without error field', async () => {
-      const mockAxiosInstance = {
+      const mockAxiosInstance: MockAxiosInstance = {
         post: jest.fn().mockRejectedValue({
           response: {
             status: 400,
@@ -360,7 +377,7 @@ describe('KeyClaimClient', () => {
         }),
       };
 
-      mockedAxios.create.mockReturnValue(mockAxiosInstance as any);
+      mockedAxios.create.mockReturnValue(mockAxiosInstance as AxiosInstance);
 
       const client = new KeyClaimClient({
         apiKey: mockApiKey,
@@ -379,14 +396,14 @@ describe('KeyClaimClient', () => {
     });
 
     it('should throw error for network errors', async () => {
-      const mockAxiosInstance = {
+      const mockAxiosInstance: MockAxiosInstance = {
         post: jest.fn().mockRejectedValue({
           request: {},
           message: 'Network Error',
         }),
       };
 
-      mockedAxios.create.mockReturnValue(mockAxiosInstance as any);
+      mockedAxios.create.mockReturnValue(mockAxiosInstance as AxiosInstance);
 
       const client = new KeyClaimClient({
         apiKey: mockApiKey,
@@ -415,7 +432,7 @@ describe('KeyClaimClient', () => {
         },
       };
 
-      const mockAxiosInstance = {
+      const mockAxiosInstance: MockAxiosInstance = {
         post: jest.fn()
           .mockResolvedValueOnce({
             data: {
@@ -428,7 +445,7 @@ describe('KeyClaimClient', () => {
           }),
       };
 
-      mockedAxios.create.mockReturnValue(mockAxiosInstance as any);
+      mockedAxios.create.mockReturnValue(mockAxiosInstance as AxiosInstance);
 
       const client = new KeyClaimClient({
         apiKey: mockApiKey,
@@ -447,7 +464,7 @@ describe('KeyClaimClient', () => {
         valid: true,
       };
 
-      const mockAxiosInstance = {
+      const mockAxiosInstance: MockAxiosInstance = {
         post: jest.fn()
           .mockResolvedValueOnce({
             data: {
@@ -460,7 +477,7 @@ describe('KeyClaimClient', () => {
           }),
       };
 
-      mockedAxios.create.mockReturnValue(mockAxiosInstance as any);
+      mockedAxios.create.mockReturnValue(mockAxiosInstance as AxiosInstance);
 
       const client = new KeyClaimClient({
         apiKey: mockApiKey,
@@ -473,7 +490,7 @@ describe('KeyClaimClient', () => {
     });
 
     it('should handle errors in validation flow', async () => {
-      const mockAxiosInstance = {
+      const mockAxiosInstance: MockAxiosInstance = {
         post: jest.fn().mockRejectedValue({
           response: {
             status: 500,
@@ -482,7 +499,7 @@ describe('KeyClaimClient', () => {
         }),
       };
 
-      mockedAxios.create.mockReturnValue(mockAxiosInstance as any);
+      mockedAxios.create.mockReturnValue(mockAxiosInstance as AxiosInstance);
 
       const client = new KeyClaimClient({
         apiKey: mockApiKey,
@@ -495,7 +512,7 @@ describe('KeyClaimClient', () => {
 
   describe('Error Handling', () => {
     it('should handle HTTP errors with status code', async () => {
-      const mockAxiosInstance = {
+      const mockAxiosInstance: MockAxiosInstance = {
         post: jest.fn().mockRejectedValue({
           response: {
             status: 403,
@@ -504,7 +521,7 @@ describe('KeyClaimClient', () => {
         }),
       };
 
-      mockedAxios.create.mockReturnValue(mockAxiosInstance as any);
+      mockedAxios.create.mockReturnValue(mockAxiosInstance as AxiosInstance);
 
       const client = new KeyClaimClient({
         apiKey: mockApiKey,
@@ -521,14 +538,14 @@ describe('KeyClaimClient', () => {
     });
 
     it('should handle network errors', async () => {
-      const mockAxiosInstance = {
+      const mockAxiosInstance: MockAxiosInstance = {
         post: jest.fn().mockRejectedValue({
           request: {},
           message: 'Network timeout',
         }),
       };
 
-      mockedAxios.create.mockReturnValue(mockAxiosInstance as any);
+      mockedAxios.create.mockReturnValue(mockAxiosInstance as AxiosInstance);
 
       const client = new KeyClaimClient({
         apiKey: mockApiKey,
@@ -548,7 +565,7 @@ describe('KeyClaimClient', () => {
         post: jest.fn().mockRejectedValue(new Error('Unknown error')),
       };
 
-      mockedAxios.create.mockReturnValue(mockAxiosInstance as any);
+      mockedAxios.create.mockReturnValue(mockAxiosInstance as AxiosInstance);
 
       const client = new KeyClaimClient({
         apiKey: mockApiKey,
@@ -565,11 +582,11 @@ describe('KeyClaimClient', () => {
     });
 
     it('should handle unknown errors without message', async () => {
-      const mockAxiosInstance = {
+      const mockAxiosInstance: MockAxiosInstance = {
         post: jest.fn().mockRejectedValue({}),
       };
 
-      mockedAxios.create.mockReturnValue(mockAxiosInstance as any);
+      mockedAxios.create.mockReturnValue(mockAxiosInstance as AxiosInstance);
 
       const client = new KeyClaimClient({
         apiKey: mockApiKey,
@@ -586,7 +603,7 @@ describe('KeyClaimClient', () => {
     });
 
     it('should handle HTTP errors with message field', async () => {
-      const mockAxiosInstance = {
+      const mockAxiosInstance: MockAxiosInstance = {
         post: jest.fn().mockRejectedValue({
           response: {
             status: 500,
@@ -595,7 +612,7 @@ describe('KeyClaimClient', () => {
         }),
       };
 
-      mockedAxios.create.mockReturnValue(mockAxiosInstance as any);
+      mockedAxios.create.mockReturnValue(mockAxiosInstance as AxiosInstance);
 
       const client = new KeyClaimClient({
         apiKey: mockApiKey,
@@ -624,7 +641,7 @@ describe('KeyClaimClient', () => {
         post: jest.fn().mockRejectedValue(axiosError),
       };
 
-      mockedAxios.create.mockReturnValue(mockAxiosInstance as any);
+      mockedAxios.create.mockReturnValue(mockAxiosInstance as AxiosInstance);
 
       const client = new KeyClaimClient({
         apiKey: mockApiKey,
@@ -641,7 +658,7 @@ describe('KeyClaimClient', () => {
     });
 
     it('should handle HTTP errors with default message when no error/message available', async () => {
-      const mockAxiosInstance = {
+      const mockAxiosInstance: MockAxiosInstance = {
         post: jest.fn().mockRejectedValue({
           response: {
             status: 404,
@@ -650,7 +667,7 @@ describe('KeyClaimClient', () => {
         }),
       };
 
-      mockedAxios.create.mockReturnValue(mockAxiosInstance as any);
+      mockedAxios.create.mockReturnValue(mockAxiosInstance as AxiosInstance);
 
       const client = new KeyClaimClient({
         apiKey: mockApiKey,
@@ -684,9 +701,10 @@ describe('KeyClaimError', () => {
 
 describe('createClient', () => {
   it('should create client instance', () => {
-    mockedAxios.create.mockReturnValue({
+    const mockInstance: MockAxiosInstance = {
       post: jest.fn(),
-    } as any);
+    };
+    mockedAxios.create.mockReturnValue(mockInstance as AxiosInstance);
 
     const client = createClient({
       apiKey: 'kc_test123456789012345678901234567890123456789012345678901234567890',
@@ -696,9 +714,10 @@ describe('createClient', () => {
   });
 
   it('should create client with string apiKey', () => {
-    mockedAxios.create.mockReturnValue({
+    const mockInstance: MockAxiosInstance = {
       post: jest.fn(),
-    } as any);
+    };
+    mockedAxios.create.mockReturnValue(mockInstance as AxiosInstance);
 
     const client = createClient('kc_test123456789012345678901234567890123456789012345678901234567890');
 
