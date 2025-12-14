@@ -24,7 +24,7 @@ module.exports = {
   },
   overrides: [
     {
-      files: ['__tests__/**/*.ts'], // Apply to test files
+      files: ['__tests__/**/*.ts', '**/*.test.ts'], // Apply to test files
       parserOptions: {
         project: ['./tsconfig.test.json'], // Use specific tsconfig for tests
       },
