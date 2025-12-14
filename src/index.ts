@@ -204,7 +204,7 @@ export class KeyClaimClient {
   generateResponse(
     challenge: string,
     method: ResponseMethod = 'hmac',
-    customData?: any
+    customData?: unknown
   ): string {
     switch (method) {
       case 'echo':
@@ -222,7 +222,7 @@ export class KeyClaimClient {
           .update(challenge + this.secret)
           .digest('hex');
 
-      case 'custom':
+      case 'custom': {
         if (!customData) {
           throw new KeyClaimError('Custom data is required for custom method');
         }
@@ -230,9 +230,15 @@ export class KeyClaimClient {
           ? `${challenge}:${customData}`
           : `${challenge}:${JSON.stringify(customData)}`;
         return crypto.createHash('sha256').update(data).digest('hex');
+      }
 
-      default:
-        throw new KeyClaimError(`Unknown response method: ${method}`);
+      default: {
+        // TypeScript exhaustiveness check - this should never happen at runtime
+        // but we handle it for type safety
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars, @typescript-eslint/restrict-template-expressions
+        const _exhaustiveCheck: never = method;
+        throw new KeyClaimError(`Unknown response method: ${method as string}`);
+      }
     }
   }
 
@@ -306,7 +312,7 @@ export class KeyClaimClient {
   async validate(
     method: ResponseMethod = 'hmac',
     ttl: number = 30,
-    customData?: any
+    customData?: unknown
   ): Promise<ValidateChallengeResponse> {
     try {
       // Create challenge
